@@ -155,3 +155,19 @@ test("a gym with no equipment still gets a bodyweight plan", () => {
     for (const item of day.exercises) assert.deepEqual(EXERCISES_BY_ID[item.exercise_id].requires, []);
   }
 });
+
+test("a single session respects focus, length and equipment", async () => {
+  const { generateSession, FOCUSES } = await import("../src/lib/generator");
+  const available = new Set(BASELINES.commercial);
+  for (const focus of FOCUSES) {
+    for (const minutes of [30, 45, 60, 90]) {
+      const day = generateSession({ ...base, session_minutes: minutes }, available, focus, {}, "s");
+      assert.equal(day.focus, focus);
+      assert.ok(day.exercises.length >= 3);
+      assert.ok(estimateMinutes(day) <= minutes + 2, `${focus} ${minutes} gave ${estimateMinutes(day)}`);
+      assert.deepEqual(validatePlan({ goal: "strength", units: "lb", days: [day] }, available), []);
+    }
+  }
+  const legs = generateSession(base, available, "Legs", {}, "s");
+  assert.ok(legs.exercises.every((it) => ["quads", "hamstrings", "glutes", "calves", "core"].includes(EXERCISES_BY_ID[it.exercise_id].muscle)));
+});

@@ -1,247 +1,236 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { GymPicker } from "@/components/GymPicker";
-import { useApp } from "@/lib/app";
-import { CATEGORIES, EQUIPMENT, EQUIPMENT_BY_ID, searchEquipment } from "@/lib/catalog";
-import { db } from "@/lib/supabase";
-import type { EquipmentChange, GymEquipmentRow } from "@/lib/types";
-
-function labelFor(id: string, customName: string | null): string {
-  return EQUIPMENT_BY_ID[id]?.name ?? customName ?? id;
-}
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { CATEGORY_COLOR, EquipmentArt } from "@/components/EquipmentArt";
+import { CATEGORIES, EQUIPMENT_BY_ID, GYM_TYPES } from "@/lib/catalog";
+import { makeCustomGym } from "@/lib/gyms";
+import { allGyms, gymEquipment, update, useStore } from "@/lib/store";
+import type { GymType } from "@/lib/types";
 
 export default function GymPage() {
-  const { userId, gym, equipment, refresh } = useApp();
-  const [changing, setChanging] = useState(false);
+  const state = useStore();
+  const router = useRouter();
+  const gyms = allGyms(state);
+  const [picked, setPicked] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [changes, setChanges] = useState<EquipmentChange[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [thanks, setThanks] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [type, setType] = useState<GymType>("commercial");
 
-  const gymId = gym?.id;
-  const loadChanges = useCallback(async () => {
-    if (!gymId) return;
-    const { data } = await db()
-      .from("equipment_changes")
-      .select("*")
-      .eq("gym_id", gymId)
-      .order("created_at", { ascending: false })
-      .limit(15);
-    setChanges((data as EquipmentChange[] | null) ?? []);
-  }, [gymId]);
+  if (!state.hydrated) return null;
 
-  useEffect(() => {
-    // Fetch-on-mount: the result is set asynchronously once the request returns.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadChanges();
-  }, [loadChanges]);
-
-  const present = useMemo(() => equipment.filter((row) => row.present), [equipment]);
-  const removed = useMemo(() => equipment.filter((row) => !row.present), [equipment]);
-  const presentIds = useMemo(() => new Set(present.map((row) => row.equipment_id)), [present]);
-  const custom = present.filter((row) => !EQUIPMENT_BY_ID[row.equipment_id]);
-
-  const matches = query.trim()
-    ? searchEquipment(query).filter((item) => !presentIds.has(item.id))
-    : [];
-  const exactCustom = custom.some(
-    (row) => row.custom_name?.toLowerCase() === query.trim().toLowerCase(),
+  const selectedId = picked ?? state.gymId ?? gyms[0]?.id;
+  const gym = gyms.find((g) => g.id === selectedId) ?? gyms[0];
+  const q = query.trim().toLowerCase();
+  const visible = gyms.filter(
+    (g) => !q || g.name.toLowerCase().includes(q) || g.address.toLowerCase().includes(q),
   );
+  const equipment = gymEquipment(state, gym);
+  const isCurrent = state.gymId === gym.id;
 
-  if (!gym) return null;
-
-  async function change(
-    equipmentId: string,
-    action: "add" | "remove" | "restore",
-    customName: string | null = null,
-  ) {
-    if (!gym) return;
-    setBusy(true);
-    setError(null);
-    setThanks(null);
-    const { error: err } = await db().rpc("change_gym_equipment", {
-      p_gym: gym.id,
-      p_equipment: equipmentId,
-      p_action: action,
-      p_custom_name: customName,
-    });
-    if (err) setError(err.message);
-    else {
-      setThanks(
-        gym.is_private
-          ? "Updated."
-          : "Updated for everyone who trains here. Thanks for keeping this gym accurate.",
-      );
-      setQuery("");
-    }
-    await Promise.all([refresh(), loadChanges()]);
-    setBusy(false);
+  function trainHere() {
+    update(() => ({ gymId: gym.id }));
+    router.push("/dashboard");
   }
 
-  if (changing) {
-    return (
-      <div className="flex flex-col gap-4">
-        <header className="flex items-center justify-between">
-          <h1>Change gym</h1>
-          <button className="btn btn-small" onClick={() => setChanging(false)}>
-            Cancel
-          </button>
-        </header>
-        <GymPicker onPicked={() => setChanging(false)} />
-      </div>
-    );
+  function addGym(event: React.FormEvent) {
+    event.preventDefault();
+    const created = makeCustomGym(name, address, type);
+    update((s) => ({ customGyms: [...s.customGyms, created] }));
+    setPicked(created.id);
+    setAdding(false);
+    setName("");
+    setAddress("");
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1>{gym.name}</h1>
-          <p className="muted text-sm">
-            {gym.is_private ? "Private, only you can see it" : gym.address || "No address"} ·{" "}
-            {present.length} items
-          </p>
-        </div>
-        <button className="btn btn-small" onClick={() => setChanging(true)}>
-          Change
-        </button>
-      </header>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-3">
+        <h1 className="display">Pick your gym</h1>
+        <p className="lede">Workouts only use equipment this gym has.</p>
+      </div>
 
-      {error && <p className="notice notice-error">{error}</p>}
-      {thanks && <p className="notice">{thanks}</p>}
-
-      <section className="card flex flex-col gap-3">
-        <label className="label" htmlFor="add-equipment">
-          Add equipment
-        </label>
-        <input
-          id="add-equipment"
-          className="input"
-          placeholder="Search, for example hack squat or rower"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        {matches.map((item) => (
-          <div key={item.id} className="flex items-center justify-between gap-3">
-            <span>
-              {item.name} <span className="muted text-sm">· {item.category}</span>
-            </span>
-            <button className="btn btn-small" disabled={busy} onClick={() => change(item.id, "add")}>
-              Add
-            </button>
-          </div>
-        ))}
-        {query.trim().length >= 3 && matches.length === 0 && !exactCustom && (
-          <div className="flex flex-col gap-2">
-            <p className="muted text-sm">
-              Not in the catalog, or this gym already has it. You can add it as a custom item.
-              Workouts do not use custom items yet.
-            </p>
-            <button
-              className="btn btn-small self-start"
-              disabled={busy}
-              onClick={() => change(`custom:${crypto.randomUUID()}`, "add", query.trim().slice(0, 80))}
-            >
-              Add “{query.trim()}” as custom
-            </button>
-          </div>
-        )}
-      </section>
-
-      {CATEGORIES.map((category) => {
-        const rows = present.filter((row) => EQUIPMENT_BY_ID[row.equipment_id]?.category === category);
-        if (rows.length === 0) return null;
-        return <EquipmentGroup key={category} title={category} rows={rows} busy={busy} onRemove={change} />;
-      })}
-      {custom.length > 0 && (
-        <EquipmentGroup title="Added by members" rows={custom} busy={busy} onRemove={change} />
-      )}
-      {present.length === 0 && (
-        <p className="muted">
-          No equipment listed. Workouts will use bodyweight exercises until you add some.
-        </p>
-      )}
-
-      {removed.length > 0 && (
-        <section>
-          <h2 className="mb-2">Reported missing</h2>
-          <ul className="card flex flex-col gap-2">
-            {removed.map((row) => (
-              <li key={row.equipment_id} className="flex items-center justify-between gap-3">
-                <span className="muted">{labelFor(row.equipment_id, row.custom_name)}</span>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr]">
+        <aside className="flex flex-col gap-3">
+          <label className="sr-only" htmlFor="gym-search">
+            Search gyms
+          </label>
+          <input
+            id="gym-search"
+            className="input"
+            placeholder="Search by name or city"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <ul className="flex flex-col gap-2">
+            {visible.map((g) => (
+              <li key={g.id}>
                 <button
-                  className="btn btn-small"
-                  disabled={busy}
-                  onClick={() => change(row.equipment_id, "restore", row.custom_name)}
+                  className="well w-full text-left"
+                  style={g.id === gym.id ? { outline: "1.5px solid var(--chalk)" } : undefined}
+                  aria-pressed={g.id === gym.id}
+                  onClick={() => setPicked(g.id)}
                 >
-                  It&apos;s here
+                  <span className="block font-semibold">
+                    {g.name}
+                    {state.gymId === g.id && <span className="muted small font-normal"> (your gym)</span>}
+                  </span>
+                  <span className="muted small block">{g.address || "No address"}</span>
                 </button>
               </li>
             ))}
+            {visible.length === 0 && <li className="muted small">No gyms match. Add yours below.</li>}
           </ul>
-        </section>
-      )}
 
-      {changes.length > 0 && (
-        <section>
-          <h2 className="mb-2">Recent changes</h2>
-          <ul className="card flex flex-col gap-2 text-sm">
-            {changes.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-3">
-                <span>
-                  {c.user_id === userId ? "You" : "A member"}{" "}
-                  {c.action === "remove" ? "removed" : c.action === "add" ? "added" : "restored"}{" "}
-                  {labelFor(c.equipment_id, c.custom_name)}
-                  <span className="muted"> · {new Date(c.created_at).toLocaleDateString()}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="muted mt-2 text-sm">
-            Each account can make 30 equipment changes per day. {EQUIPMENT.length} items in the
-            catalog.
-          </p>
-        </section>
-      )}
-    </div>
-  );
-}
+          {!adding ? (
+            <button className="btn" onClick={() => setAdding(true)}>
+              Add my gym
+            </button>
+          ) : (
+            <form onSubmit={addGym} className="panel flex flex-col gap-4">
+              <h3>Add a gym</h3>
+              <div>
+                <label className="field-label" htmlFor="new-name">
+                  Name
+                </label>
+                <input
+                  id="new-name"
+                  className="input"
+                  required
+                  minLength={2}
+                  maxLength={80}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="new-address">
+                  Address or city
+                </label>
+                <input
+                  id="new-address"
+                  className="input"
+                  maxLength={120}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="new-type">
+                  What kind of gym
+                </label>
+                <select
+                  id="new-type"
+                  className="input"
+                  value={type}
+                  onChange={(e) => setType(e.target.value as GymType)}
+                >
+                  {GYM_TYPES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="muted small mt-1">{GYM_TYPES.find((t) => t.id === type)?.description}</p>
+              </div>
+              <div className="flex gap-2">
+                <button className="btn btn-go btn-sm">Add gym</button>
+                <button type="button" className="btn btn-sm" onClick={() => setAdding(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </aside>
 
-function EquipmentGroup({
-  title,
-  rows,
-  busy,
-  onRemove,
-}: {
-  title: string;
-  rows: GymEquipmentRow[];
-  busy: boolean;
-  onRemove: (id: string, action: "remove", customName: string | null) => void;
-}) {
-  return (
-    <section>
-      <h2 className="mb-2">{title}</h2>
-      <ul className="card flex flex-col gap-2">
-        {rows
-          .slice()
-          .sort((a, b) =>
-            labelFor(a.equipment_id, a.custom_name).localeCompare(labelFor(b.equipment_id, b.custom_name)),
-          )
-          .map((row) => (
-            <li key={row.equipment_id} className="flex items-center justify-between gap-3">
-              <span>{labelFor(row.equipment_id, row.custom_name)}</span>
-              <button
-                className="btn btn-small btn-quiet"
-                disabled={busy}
-                onClick={() => onRemove(row.equipment_id, "remove", row.custom_name)}
+        <article className="panel flex flex-col gap-6" aria-live="polite">
+          <header className="flex flex-col gap-1">
+            <h2 className="display">{gym.name}</h2>
+            <p className="muted">{gym.address}</p>
+          </header>
+
+          <p className="max-w-prose">{gym.synopsis}</p>
+
+          {(gym.hours || gym.amenities.length > 0) && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {gym.hours && (
+                <div>
+                  <h3 className="mb-2">Hours</h3>
+                  <ul className="muted small">
+                    {gym.hours.map((h) => (
+                      <li key={h}>{h}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {gym.amenities.length > 0 && (
+                <div>
+                  <h3 className="mb-2">Also here</h3>
+                  <ul className="flex flex-wrap gap-2">
+                    {gym.amenities.map((a) => (
+                      <li key={a} className="tag">
+                        {a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3>
+                Possible equipment <span className="num text-xl">{equipment.length}</span>
+              </h3>
+              <Link
+                href="/equipment"
+                className="small font-semibold underline underline-offset-4"
+                onClick={() => update(() => ({ gymId: gym.id }))}
               >
-                Not here
-              </button>
-            </li>
-          ))}
-      </ul>
-    </section>
+                View all
+              </Link>
+            </div>
+            <ul className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {equipment.slice(0, 12).map((item) => (
+                <li key={item.id} className="well flex flex-col items-center gap-1 p-2 text-center">
+                  <EquipmentArt id={item.id} className="w-full" />
+                  <span className="small leading-tight">{EQUIPMENT_BY_ID[item.id]?.name ?? item.id}</span>
+                </li>
+              ))}
+            </ul>
+            <ul className="flex flex-wrap gap-2">
+              {CATEGORIES.map((c) => {
+                const count = equipment.filter((item) => EQUIPMENT_BY_ID[item.id]?.category === c).length;
+                if (!count) return null;
+                return (
+                  <li key={c} className="tag">
+                    <span className="tag-dot" style={{ color: CATEGORY_COLOR[c] }} />
+                    {c} {count}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="muted small">
+              {gym.custom
+                ? "Based on what most gyms of this type have."
+                : "Seen in this gym's public photos and reviews, plus what most gyms of this type have. Correct anything that is wrong on the equipment screen."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button className="btn btn-go" onClick={trainHere}>
+              {isCurrent ? "Go to workout" : "Train here"}
+            </button>
+            <Link href="/equipment" className="btn" onClick={() => update(() => ({ gymId: gym.id }))}>
+              Browse equipment
+            </Link>
+          </div>
+        </article>
+      </div>
+    </div>
   );
 }

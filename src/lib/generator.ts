@@ -226,6 +226,75 @@ function pick(
   return best;
 }
 
+/** Day types a member can ask for on the dashboard. */
+export const FOCUSES = ["Full body", "Upper", "Lower", "Push", "Pull", "Legs"] as const;
+export type Focus = (typeof FOCUSES)[number];
+
+function templateFor(focus: string): Slot[] {
+  if (focus === "Full body") return TEMPLATES["Full body A"];
+  return TEMPLATES[focus] ?? TEMPLATES["Full body A"];
+}
+
+function buildDay(
+  focus: string,
+  profile: GeneratorProfile,
+  usable: Exercise[],
+  used: Map<string, number>,
+  history: Record<string, LastResult>,
+  seed: string,
+): PlanDay {
+  const preset = PRESETS[profile.goal];
+  const budget = profile.session_minutes * 60 - WARMUP_SECONDS - preset.cardioMinutes * 60;
+  const inDay = new Set<string>();
+  const exercises: PlanExercise[] = [];
+  let spent = 0;
+
+  for (const slot of templateFor(focus)) {
+    const sc = scheme(profile.goal, slot.kind);
+    const cost = seconds(sc);
+    if (exercises.length >= MIN_EXERCISES && spent + cost > budget) break;
+
+    const inMuscle = usable.filter((ex) => ex.kind !== "cardio" && slot.muscles.includes(ex.muscle));
+    const sameKind = inMuscle.filter((ex) => ex.kind === slot.kind);
+    // If nothing of the wanted kind is possible, accept any exercise for that muscle.
+    const chosen = pick(sameKind, used, inDay, seed) ?? pick(inMuscle, used, inDay, seed);
+    if (!chosen) continue;
+
+    inDay.add(chosen.id);
+    used.set(chosen.id, (used.get(chosen.id) ?? 0) + 1);
+    exercises.push(toPlanExercise(chosen, profile.goal, profile.units, history));
+    spent += seconds(scheme(profile.goal, chosen.kind));
+  }
+
+  // A day that came out too thin (little equipment, narrow focus) is topped up
+  // with whatever else the member can do, so no session is under three exercises.
+  while (exercises.length < MIN_EXERCISES) {
+    const extra = pick(usable.filter((ex) => ex.kind !== "cardio"), used, inDay, seed);
+    if (!extra) break;
+    inDay.add(extra.id);
+    used.set(extra.id, (used.get(extra.id) ?? 0) + 1);
+    exercises.push(toPlanExercise(extra, profile.goal, profile.units, history));
+  }
+
+  // Short sessions with long rests can still overrun; trim sets until they fit.
+  const length = () =>
+    exercises.reduce((sum, it) => sum + it.sets * (SECONDS_PER_SET + it.rest_seconds) + SETUP_SECONDS, 0);
+  while (length() > budget && exercises.some((it) => it.sets > 2)) {
+    const longest = exercises.reduce((a, b) => (b.sets > a.sets ? b : a));
+    longest.sets -= 1;
+  }
+
+  if (preset.cardioMinutes > 0) {
+    const cardio = pick(usable.filter((ex) => ex.kind === "cardio"), used, inDay, seed);
+    if (cardio) {
+      used.set(cardio.id, (used.get(cardio.id) ?? 0) + 1);
+      exercises.push(toPlanExercise(cardio, profile.goal, profile.units, history));
+    }
+  }
+
+  return { focus, exercises };
+}
+
 /**
  * Build a week of workouts using only equipment in `available`.
  * `seed` should change week to week (for example user id plus week start date).
@@ -239,76 +308,22 @@ export function generateWeek(
   const days = Math.min(6, Math.max(1, Math.round(profile.days_per_week)));
   const usable = EXERCISES.filter((ex) => isUsable(ex, available, profile));
   const used = new Map<string, number>();
-  const preset = PRESETS[profile.goal];
-  const budget =
-    profile.session_minutes * 60 - WARMUP_SECONDS - preset.cardioMinutes * 60;
-
-  const planDays: PlanDay[] = SPLITS[days].map((focus, dayIndex) => {
-    const inDay = new Set<string>();
-    const exercises: PlanExercise[] = [];
-    let spent = 0;
-
-    for (const slot of TEMPLATES[focus]) {
-      const sc = scheme(profile.goal, slot.kind);
-      const cost = seconds(sc);
-      if (exercises.length >= MIN_EXERCISES && spent + cost > budget) break;
-
-      const inMuscle = usable.filter(
-        (ex) => ex.kind !== "cardio" && slot.muscles.includes(ex.muscle),
-      );
-      const sameKind = inMuscle.filter((ex) => ex.kind === slot.kind);
-      // If nothing of the wanted kind is possible, accept any exercise for that muscle.
-      const chosen =
-        pick(sameKind, used, inDay, `${seed}:${dayIndex}`) ??
-        pick(inMuscle, used, inDay, `${seed}:${dayIndex}`);
-      if (!chosen) continue;
-
-      inDay.add(chosen.id);
-      used.set(chosen.id, (used.get(chosen.id) ?? 0) + 1);
-      exercises.push(toPlanExercise(chosen, profile.goal, profile.units, history));
-      spent += seconds(scheme(profile.goal, chosen.kind));
-    }
-
-    // A day that came out too thin (little equipment, narrow focus) is topped up
-    // with whatever else the member can do, so no session is under three exercises.
-    while (exercises.length < MIN_EXERCISES) {
-      const extra = pick(
-        usable.filter((ex) => ex.kind !== "cardio"),
-        used,
-        inDay,
-        `${seed}:${dayIndex}`,
-      );
-      if (!extra) break;
-      inDay.add(extra.id);
-      used.set(extra.id, (used.get(extra.id) ?? 0) + 1);
-      exercises.push(toPlanExercise(extra, profile.goal, profile.units, history));
-    }
-
-    // Short sessions with long rests can still overrun; trim sets until they fit.
-    const length = () =>
-      exercises.reduce((sum, it) => sum + it.sets * (SECONDS_PER_SET + it.rest_seconds) + SETUP_SECONDS, 0);
-    while (length() > budget && exercises.some((it) => it.sets > 2)) {
-      const longest = exercises.reduce((a, b) => (b.sets > a.sets ? b : a));
-      longest.sets -= 1;
-    }
-
-    if (preset.cardioMinutes > 0) {
-      const cardio = pick(
-        usable.filter((ex) => ex.kind === "cardio"),
-        used,
-        inDay,
-        `${seed}:${dayIndex}`,
-      );
-      if (cardio) {
-        used.set(cardio.id, (used.get(cardio.id) ?? 0) + 1);
-        exercises.push(toPlanExercise(cardio, profile.goal, profile.units, history));
-      }
-    }
-
-    return { focus, exercises };
-  });
-
+  const planDays = SPLITS[days].map((focus, dayIndex) =>
+    buildDay(focus, profile, usable, used, history, `${seed}:${dayIndex}`),
+  );
   return { goal: profile.goal, units: profile.units, days: planDays };
+}
+
+/** Build one session of the chosen focus and length. */
+export function generateSession(
+  profile: GeneratorProfile,
+  available: ReadonlySet<string>,
+  focus: Focus,
+  history: Record<string, LastResult> = {},
+  seed = "",
+): PlanDay {
+  const usable = EXERCISES.filter((ex) => isUsable(ex, available, profile));
+  return buildDay(focus, profile, usable, new Map(), history, seed);
 }
 
 /** Exercise ids in the plan that cannot be done with `available`. Empty means the plan is valid. */

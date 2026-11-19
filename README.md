@@ -1,62 +1,42 @@
 # fit^3
 
-Workouts generated from the equipment at your gym, with a community-edited equipment list and a training journal.
+Workouts built from the equipment at your gym.
 
-The design and the decisions behind it are in the concept brief. This repository is the first version, which covers the six core functions:
+This version is the interface and dashboard. It runs entirely in the browser with no account, so the core flow can be tried and refined before sign-in, a shared database and the other features are added.
 
-1. Account and training profile (goal, experience, days per week, session length, movements to leave out)
-2. Gym selection, with a starting equipment list based on the gym's type
-3. Equipment list that any member can add to or correct, with a change history
-4. Workout generator for up to one week, using only equipment the gym has
-5. One-tap swaps for "equipment is taken" and "this gym doesn't have it"
-6. Journal that records sets, reps and weight and sets the next target
+## What it does
 
-## Not in this version
+1. **Setup**: age, height, weight and sex, then goal, experience, days per week, session length and movements to leave out.
+2. **Gym**: pick a gym or add your own. Each gym has a synopsis, hours, amenities and a list of possible equipment.
+3. **Equipment**: a game-style viewer. Tap any piece to see it, what it trains and which exercises it unlocks, and mark whether your gym has it.
+4. **Workout**: choose a focus, duration, start time and goal, then generate a session that only uses your gym's equipment. Each exercise shows its start time, sets, reps, rest and how-to, and can be swapped if the equipment is taken.
 
-- Finding gyms through Google Maps. Gyms are added by name and address for now.
-- Virtual walkthrough, photo identification, exercise animations, and sharing.
-- AI-written explanations. The generator is rule-based.
-- Full offline use. The current week's plan is cached on the device for reading; logging sets needs a connection.
-- Custom equipment in workouts. Members can add custom items to a gym, but no exercises use them yet.
+Settings and the last workout are kept in the browser on that device.
 
-## Set up
+## Run it
 
-You need Node.js 20 or newer and a free Supabase project.
+You need Node.js 20 or newer.
 
-1. Create a project at https://supabase.com/dashboard.
-2. In the project, open **SQL Editor**, paste the contents of `supabase/schema.sql`, and run it.
-3. Open **Project Settings**, then **API**, and copy the project URL and the `anon` key.
-4. In this folder, run:
+```bash
+npm install
+npm run dev
+```
 
-   ```bash
-   cp .env.example .env.local
-   ```
-
-5. Open `.env.local` and paste the two values.
-6. Run:
-
-   ```bash
-   npm install
-   npm run dev
-   ```
-
-7. Open http://localhost:3000 and create an account.
-
-By default Supabase emails a confirmation link at sign-up. For local testing you can turn that off under **Authentication**, **Sign In / Providers**, **Email**.
+Then open http://localhost:3000.
 
 ## Deploy
 
-1. Import this repository at https://vercel.com/new.
-2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` under **Environment Variables**.
-3. Deploy. Every push to `main` publishes a new version.
-4. In Supabase, under **Authentication**, **URL Configuration**, set the site URL to your Vercel address.
+1. Go to https://vercel.com/new and import this repository.
+2. Click **Deploy**. No settings or keys are needed for this version.
+
+Every push to `main` publishes a new version.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Run locally |
-| `npm test` | Run the generator tests |
+| `npm test` | Run the workout generator tests |
 | `npm run typecheck` | Check types |
 | `npm run lint` | Lint |
 | `npm run build` | Production build |
@@ -65,20 +45,25 @@ By default Supabase emails a confirmation link at sign-up. For local testing you
 
 | Path | Contents |
 | --- | --- |
-| `src/lib/catalog.ts` | Equipment catalog, gym types, and baseline lists |
+| `src/app/setup` | Body info and training preferences |
+| `src/app/gym` | Gym list, synopsis and adding a gym |
+| `src/app/equipment` | Equipment viewer |
+| `src/app/dashboard` | Workout generator |
+| `src/components/EquipmentArt.tsx` | Equipment illustrations |
+| `src/lib/gyms.ts` | Gyms that ship with the app, including LA Fitness Mission Viejo |
+| `src/lib/catalog.ts` | Equipment catalog, gym types and starting lists |
 | `src/lib/exercises.ts` | Exercise library |
-| `src/lib/generator.ts` | Week generation, swaps, plan repair, next targets |
-| `src/app` | Screens: workout, gym, journal, profile |
-| `supabase/schema.sql` | Tables, row-level security, and the controlled write functions |
-| `tests` | Generator tests |
+| `src/lib/generator.ts` | Session and week generation, swaps |
+| `src/lib/store.ts` | Browser-held state (replaced by accounts later) |
+| `supabase/schema.sql`, `src/lib/supabase.ts` | Database design for the accounts step, not used yet |
 
-## Security notes
+## Next steps
 
-- Never commit `.env.local` or any key. `.gitignore` already excludes it.
-- Never use the Supabase `service_role` key in this app.
-- Profiles, plans and journals are readable only by their owner (row-level security).
-- Equipment edits go through one database function that records each change and limits an account to 30 per day.
+- Accounts and a shared database, so equipment corrections reach every member
+- Journal and progress tracking
+- Finding gyms through Google Maps
+- Short exercise animations
 
 ## Disclaimer
 
-Workouts are general suggestions, not medical advice. Members must be 18 or older.
+Workouts are general suggestions, not medical advice.

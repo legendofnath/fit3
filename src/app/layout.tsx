@@ -1,8 +1,10 @@
+import "@fontsource/barlow/400.css";
+import "@fontsource/barlow/500.css";
+import "@fontsource/barlow/600.css";
+import "@fontsource/big-shoulders-display/700";
+import "@fontsource/big-shoulders-display/800";
 import type { Metadata, Viewport } from "next";
-import { GeistMono } from "geist/font/mono";
-import { GeistSans } from "geist/font/sans";
-import { Shell } from "@/components/Shell";
-import { AppProvider } from "@/lib/app";
+import { AppFrame } from "@/components/AppFrame";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,19 +16,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#101113",
+  themeColor: "#161c24",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className="h-full antialiased">
       <body className="flex min-h-full flex-col">
-        <AppProvider>
-          <Shell>{children}</Shell>
-        </AppProvider>
+        <AppFrame>{children}</AppFrame>
       </body>
     </html>
   );
