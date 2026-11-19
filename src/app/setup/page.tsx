@@ -13,6 +13,7 @@ import {
   type Body,
   type Preferences,
 } from "@/lib/store";
+import { SPLITS_BY_ID } from "@/lib/splits";
 import type { AvoidTag, Goal, Units } from "@/lib/types";
 
 const GOALS: { id: Goal; name: string; detail: string }[] = [
@@ -87,6 +88,8 @@ function SetupForm() {
 
   function finish(event: React.FormEvent) {
     event.preventDefault();
+    // Keep the chosen split only if it still suits the number of days.
+    const keepSplit = savedPrefs?.split && SPLITS_BY_ID[savedPrefs.split]?.daysPerWeek.includes(days);
     const prefs: Preferences = {
       goal,
       experience,
@@ -94,6 +97,7 @@ function SetupForm() {
       session_minutes: minutes,
       avoid,
       units,
+      split: keepSplit ? savedPrefs?.split : undefined,
     };
     update(() => ({ body: bodyFromForm(), prefs }));
     router.push(currentGym(state) ? "/dashboard" : "/gym");

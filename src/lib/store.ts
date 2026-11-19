@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { SEEDED_GYMS, resolveEquipment, type EquipmentEdits, type GymInfo } from "./gyms";
+import type { WorkoutLog } from "./history";
 import type { AvoidTag, Goal, PlanDay, Units } from "./types";
 
 export interface Body {
@@ -20,6 +21,8 @@ export interface Preferences {
   session_minutes: number;
   avoid: AvoidTag[];
   units: Units;
+  /** Training split id; a default is picked from days per week and goal when unset. */
+  split?: string;
 }
 
 export interface State {
@@ -32,6 +35,14 @@ export interface State {
   edits: Record<string, EquipmentEdits>;
   /** The most recently generated workout, so it survives moving between screens. */
   session: Session | null;
+  /** Finished workouts, newest first. */
+  log: WorkoutLog[];
+}
+
+export interface SetEntry {
+  weight: string;
+  reps: string;
+  done: boolean;
 }
 
 export interface Session {
@@ -41,11 +52,15 @@ export interface Session {
   minutes: number;
   /** "HH:MM" */
   start: string;
+  /** Sets entered so far, per exercise id. */
+  entries?: Record<string, SetEntry[]>;
+  /** When the first set was ticked. */
+  started_at?: number | null;
 }
 
 // Kept in the browser for now. Accounts and a database replace this in a later step.
 const KEY = "fit3.state.v1";
-const SERVER: State = { hydrated: false, body: null, prefs: null, gymId: null, customGyms: [], edits: {}, session: null };
+const SERVER: State = { hydrated: false, body: null, prefs: null, gymId: null, customGyms: [], edits: {}, session: null, log: [] };
 
 let state: State | null = null;
 const listeners = new Set<() => void>();

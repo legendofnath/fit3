@@ -6,10 +6,15 @@ import { currentGym, useStore } from "@/lib/store";
 
 const LINKS = [
   { href: "/dashboard", label: "Workout" },
+  { href: "/history", label: "History" },
   { href: "/equipment", label: "Equipment" },
+  { href: "/learn", label: "Learn" },
   { href: "/gym", label: "Gym" },
   { href: "/setup", label: "Profile" },
 ];
+/** The bottom bar on phones holds the four everyday screens; the rest sit in the top bar. */
+const PHONE_BOTTOM = LINKS.slice(0, 4);
+const PHONE_TOP = LINKS.slice(4);
 
 export function Logo() {
   return (
@@ -32,6 +37,19 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         <Link href={ready ? "/dashboard" : "/"} className="shrink-0">
           <Logo />
         </Link>
+        {showNav && (
+          <nav aria-label="Account" className="sm:hidden">
+            <ul className="flex gap-1">
+              {PHONE_TOP.map((link) => (
+                <li key={link.href}>
+                  <Link href={link.href} className="nav-link" aria-current={pathname === link.href ? "page" : undefined}>
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
         {showNav && (
           <nav aria-label="Main" className="hidden sm:block">
             <ul className="flex gap-1">
@@ -61,8 +79,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           className="fixed inset-x-0 bottom-0 border-t sm:hidden"
           style={{ background: "var(--iron)", borderColor: "var(--edge)" }}
         >
-          <ul className="flex justify-around px-2 py-2">
-            {LINKS.map((link) => (
+          <ul className="flex justify-around px-1 py-2">
+            {PHONE_BOTTOM.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}

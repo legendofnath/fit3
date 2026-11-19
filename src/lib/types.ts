@@ -31,18 +31,47 @@ export interface Equipment {
   aliases: string[];
 }
 
+/** Movement pattern, used to fill split slots and to explain technique. */
+export type Pattern =
+  | "h_push"
+  | "v_push"
+  | "h_pull"
+  | "v_pull"
+  | "squat"
+  | "hinge"
+  | "lunge"
+  | "isolation"
+  | "core"
+  | "carry"
+  | "cardio";
+
+/** How heavy a role an exercise can play in a session. */
+export type Tier = "main" | "secondary" | "accessory";
+
 export interface Exercise {
   id: string;
   name: string;
   /** Every item is required. Empty means bodyweight only. */
   requires: string[];
   muscle: Muscle;
+  /** Muscles that also work hard. */
+  secondary: Muscle[];
   movement: Movement;
+  pattern: Pattern;
   kind: Kind;
+  tier: Tier;
+  /** 3 is the standard gym choice, 1 is a niche alternative. */
+  staple: 1 | 2 | 3;
+  /** How draining it is: 3 means heavy, whole-body fatigue. */
+  fatigue: 1 | 2 | 3;
   /** 1 beginner, 2 intermediate, 3 advanced */
   difficulty: 1 | 2 | 3;
+  /** Rep range this exercise is suited to. */
+  repRange: [number, number];
   avoid: AvoidTag[];
   cues: string;
+  /** The most common mistake. */
+  mistake: string;
 }
 
 export interface Profile {
@@ -83,8 +112,12 @@ export interface EquipmentChange {
   created_at: string;
 }
 
+export type Role = "main" | "secondary" | "accessory" | "finisher";
+
 export interface PlanExercise {
   exercise_id: string;
+  /** Why it is in the session; sets the sets, reps and rest. */
+  role?: Role;
   sets: number;
   /** [low, high]; null for timed cardio */
   reps: [number, number] | null;
@@ -98,6 +131,11 @@ export interface PlanExercise {
 
 export interface PlanDay {
   focus: string;
+  /** Split id and day index when generated from a split. */
+  split?: string;
+  day_index?: number;
+  /** One or two sentences on why this session was chosen. */
+  reason?: string;
   exercises: PlanExercise[];
 }
 
