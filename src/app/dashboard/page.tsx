@@ -139,9 +139,17 @@ function Dashboard() {
     update((s) => (s.session ? { session: { ...s.session, ...change(s.session) } } : {}));
   }
 
+  /** Set rows for an exercise; workouts saved before set logging existed get fresh rows. */
+  function entriesFor(s: Session, exerciseId: string): SetEntry[] {
+    const existing = s.entries?.[exerciseId];
+    if (existing) return existing;
+    const item = s.day.exercises.find((e) => e.exercise_id === exerciseId);
+    return item ? blankEntries(item, units) : [];
+  }
+
   function setEntry(exerciseId: string, index: number, patch: Partial<SetEntry>) {
     patchSession((s) => {
-      const list = [...(s.entries?.[exerciseId] ?? [])];
+      const list = [...entriesFor(s, exerciseId)];
       list[index] = { ...list[index], ...patch };
       // Carry a changed weight down to the sets that are not done yet.
       if (patch.weight !== undefined) {
@@ -156,7 +164,7 @@ function Dashboard() {
 
   function addSet(exerciseId: string) {
     patchSession((s) => {
-      const list = s.entries?.[exerciseId] ?? [];
+      const list = entriesFor(s, exerciseId);
       const last = list.at(-1) ?? { weight: "", reps: "", done: false };
       return { entries: { ...s.entries, [exerciseId]: [...list, { ...last, done: false }] } };
     });
@@ -432,7 +440,7 @@ function Dashboard() {
                 {saved.day.exercises.map((item, i) => {
                   const ex = EXERCISES_BY_ID[item.exercise_id];
                   const kit = ex.requires.at(-1);
-                  const entries = saved.entries?.[item.exercise_id] ?? [];
+                  const entries = entriesFor(saved, item.exercise_id);
                   const role = item.role ?? "accessory";
                   const done = entries.length > 0 && entries.every((e) => e.done);
                   return (
